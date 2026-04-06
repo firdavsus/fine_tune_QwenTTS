@@ -1,0 +1,112 @@
+-------Qwen3TTSSpeakerEncoderConfig---------	
+	mel_dim=128,
+        enc_dim=1024,
+        enc_channels=[512, 512, 512, 512, 1536],
+        enc_kernel_sizes=[5, 3, 3, 3, 1],
+        enc_dilations=[1, 2, 3, 4, 1],
+        enc_attention_channels=128,
+        enc_res2net_scale=8,
+        enc_se_channels=128,
+        sample_rate=24000,
+-----------------------------------------------------------
+-------Qwen3TTSTalkerCodePredictorConfig----------
+	vocab_size=2048,
+        hidden_size=1024,
+        intermediate_size=3072,
+        num_hidden_layers=5,
+        num_attention_heads=16,
+        num_key_value_heads=8,
+        head_dim=128,
+        hidden_act="silu",
+        max_position_embeddings=32768,
+        initializer_range=0.02,
+        rms_norm_eps=0.000001,
+        use_cache=True,
+        tie_word_embeddings=False,
+        rope_theta=10000,
+        rope_scaling=None,
+        attention_bias=False,
+        use_sliding_window=False,
+        sliding_window=4096,
+        max_window_layers=28,
+        layer_types=None,
+        attention_dropout=0,
+        num_code_groups=32,
+-----------------------------------------------------------
+-------Qwen3TTSTalkerConfig------------
+	code_predictor_config=None,
+        vocab_size=3072,
+        hidden_size=1024,
+        intermediate_size=2048,
+        num_hidden_layers=20,
+        num_attention_heads=16,
+        num_key_value_heads=2,
+        hidden_act="silu",
+        max_position_embeddings=32768,
+        initializer_range=0.02,
+        rms_norm_eps=0.000001,
+        use_cache=True,
+        tie_word_embeddings=False,
+        rope_theta=10000,
+        rope_scaling=None,
+        attention_bias=False,
+        use_sliding_window=False,
+        sliding_window=4096,
+        attention_dropout=0,
+        num_code_groups=32,
+        text_hidden_size=2048,
+        codec_eos_token_id=4198,
+        codec_think_id=4202,
+        codec_nothink_id=4203,
+        codec_think_bos_id=4204,
+        codec_think_eos_id=4205,
+        codec_pad_id=4196,
+        codec_bos_id=4197,
+        spk_id=None,
+        spk_is_dialect=None,
+        codec_language_id=None,
+-----------------------------------------------------------
+---------Qwen3TTSConfig-------
+	talker_config=None,
+        speaker_encoder_config=None,
+        tokenizer_type=None,
+        tts_model_size=None,
+        tts_model_type=None,
+        im_start_token_id=151644,
+        im_end_token_id=151645,
+        tts_pad_token_id=151671,
+        tts_bos_token_id=151672,
+        tts_eos_token_id=151673,
+----------------------------------------------------------
+
+Talker (LM recives words and outputs codebook speech tokens)
+
+text and audio tokens gets concatenated, and RoPe is different for each one.
+
+uses ECAPA-TDNN
+
+Multi Token Predictor predict 15 codes while main transformer predicts only 1 next.
+
+text+speaker+language+audio, but rope applies different frequencies to them so in self attention they appear as different channels.
+
+[ TEXT INPUT ]       	   [ REFERENCE AUDIO ]
+      |                         					|
+[ Text Embedder ]       [ Speaker Encoder ] (ECAPA-TDNN)
+      |                         					|
+      |                 				[ Speaker Vector ]
+      |                         					|
+      +-------------+-------------------------------+
+                	 |
+        [ TALKER TRANSFORMER ] <--- [ Previous Audio Codes ]
+                 	|
+        [   LM HEAD / PROJ   ]
+                	 |
+        [  PREDICTED CODES   ] (e.g., Codebook 1 Index)
+                	 |
+        [  CODE PREDICTOR    ] (Predicts Codebooks 2-16)
+               		 |
+        [   VQ DECODER       ] (The SnakeBeta model )
+                	 |
+        [   FINAL WAVEOFORM  ]
+
+during fine tuning it is important to fine tune not only talker predictor (LLM) but also sub_talker (if LLM predicts 1 next token sub_talker is like MTP predicts other 15 audio tokeizer tokens, which are more importnat than the LLM as they define small accent in the sound while LLM predicts only a raw sound). MLP layers should have LoRa, they store info about how it should sound.

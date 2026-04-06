@@ -1,0 +1,62 @@
+tokenizer
+--------------------------------------------------
+	codebook_size=2048,
+        hidden_size=1024,
+        latent_dim=1024,
+        max_position_embeddings=8000,
+        rope_theta=10000,
+        num_attention_heads=16,   {<--}
+        num_key_value_heads=16, {equals the heads which makes it MHA}
+        attention_bias=False,
+        sliding_window=72, {looks back by 72 frames}
+        intermediate_size=3072, {used in MLP}
+        hidden_act="silu",
+        layer_scale_initial_scale=0.01,
+        rms_norm_eps=1e-5,
+        num_hidden_layers=8,
+        num_quantizers=16,
+        upsample_rates=(8, 5, 4, 3),
+        upsampling_ratios=(2, 2),
+        decoder_dim=1536,
+        attention_dropout=0.0,
+--------------------------------------------------
+	encoder_config=None,
+        decoder_config=None,
+        encoder_valid_num_quantizers=16, {output was (codes_length_i, num_quantizers)}
+        input_sample_rate=24000,
+        output_sample_rate=24000,
+        decode_upsample_rate=1920, {only 12.5 tokens per second}
+        encode_downsample_rate=1920,
+
+----------------------------------------------------
+Qwen TTS -> operates on 1D continuous sound not mel spectrogram!!!
+Causal ConvNets -> do not look forward it depends only on past sound.
+gamma-> if the residual connection receives too loud signal (pat info can wannish) so we add small num 1e-6 to normalize it!
+
+It uses SiLU in MLP
+
+LayerScale -> gamma typa shit to prevent forgetting residuals.
+
+TransformerLayer-> sandwitch style: 
+	RMSNorm(x)
+	Self Attention (MHA)
+	Layer_scale (gemma)
+	+ residual
+
+	RMSNorm(x)
+	MLP (SiLU)
+	Layer Scale (gemma)
+	+ risudual
+
+uses Sliding Attention (72) and Normal one like Gemma LLM
+
+SnakeBeta->Standard activations like ReLU or SiLU are monotonic—they only go up. Audio, however, is naturally periodic (it vibrates). a- controls Frequency, b-contros magnitude
+f(X)=x+1/b * sin(a*x)^2
+
+-------------------------------------------------------
+----Quantization of codebooks----
+
+ EuclideanCodebook -> uses running average: total assigned tokens/assigned so far. This makes the codebook more stable and prevents "Dead Codes" (crayons that never get picked).
+
+encoder_valid_num_quantizers -> we have 16 different latents
+so we initialize to 0 at first then gradually layer by layer add codebooks from 1 to 16
